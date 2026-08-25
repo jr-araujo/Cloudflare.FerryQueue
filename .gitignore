@@ -1,0 +1,20 @@
+## .NET artifacts
+bin/
+obj/
+*.user
+*.suo
+.vs/
+nupkg/
+*.nupkg
+*.snupkg
+TestResults/
+
+## Rider / VS Code
+.idea/
+.vscode/
+*.DotSettings.user
+
+## Secrets — never commit real credentials
+appsettings.Development.json
+appsettings.Local.json
+secrets.json
