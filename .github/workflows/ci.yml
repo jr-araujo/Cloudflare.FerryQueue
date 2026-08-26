@@ -1,12 +1,11 @@
 name: CI / Publish
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
-  release:
-    types: [published]
+  workflow_dispatch: {}
+  push:
+    tags: ['[0-9]+.[0-9]+.[0-9]+']
 
 env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
@@ -14,6 +13,8 @@ env:
 
 jobs:
   # ── Build & Test ─────────────────────────────────────────────────────────────
+  # Runs for every trigger (PR pushes, manual RC dispatch, and stable tag pushes)
+  # so nothing gets packed/published without passing the test suite first.
   build:
     name: Build & Test
     runs-on: ubuntu-latest
@@ -21,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # needed for SourceLink
+          fetch-depth: 0   # needed for MinVer (and SourceLink) to see full tag history
 
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
@@ -48,12 +49,17 @@ jobs:
           name: test-results
           path: ./TestResults/*.trx
 
-  # ── Pack ─────────────────────────────────────────────────────────────────────
-  pack:
-    name: Pack NuGet
+  # ── Alpha ─────────────────────────────────────────────────────────────────────
+  # Automatic on every PR push. Version: {next}-alpha.0.{height}, e.g. 1.0.1-alpha.0.3
+  # Lets reviewers/testers install the exact build under review via:
+  #   dotnet add package Cloudflare.FerryQueue --version <printed-version> --prerelease
+  publish-alpha:
+    name: Pack & Publish (alpha)
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'release'
+    if: github.event_name == 'pull_request'
+    permissions:
+      id-token: write   # required for NuGet Trusted Publishing (OIDC)
 
     steps:
       - uses: actions/checkout@v4
@@ -66,32 +72,42 @@ jobs:
           dotnet-version: '10.0.x'
           dotnet-quality: preview
 
-      - name: Pack
+      - name: Pack (alpha)
         run: |
           dotnet pack src/Cloudflare.FerryQueue/Cloudflare.FerryQueue.csproj \
             -c Release \
             -o ./nupkg \
-            /p:PackageVersion=${{ github.event.release.tag_name }}
+            /p:MinVerDefaultPreReleaseIdentifiers=alpha.0
 
-      - name: Upload NuGet artifacts
-        uses: actions/upload-artifact@v4
+      - name: NuGet login (OIDC → temp API key)
+        uses: NuGet/login@v1
+        id: login
         with:
-          name: nuget-packages
-          path: ./nupkg/
+          user: jrobertoaraujo
 
-  # ── Publish to NuGet.org ──────────────────────────────────────────────────────
-  publish:
-    name: Publish to NuGet.org
-    needs: pack
+      - name: Push to NuGet.org
+        run: |
+          dotnet nuget push ./nupkg/*.nupkg \
+            --api-key ${{ steps.login.outputs.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+  # ── Release Candidate ────────────────────────────────────────────────────────
+  # Manually triggered ("Run workflow" in the Actions tab), main branch only.
+  # Version: {next}-rc.0.{height}, e.g. 1.0.1-rc.0.7 — the manual trigger itself
+  # is the gate; no separate approval step.
+  publish-rc:
+    name: Pack & Publish (rc)
+    needs: build
     runs-on: ubuntu-latest
-    environment: nuget-release
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    permissions:
+      id-token: write
 
     steps:
-      - name: Download packages
-        uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
         with:
-          name: nuget-packages
-          path: ./nupkg
+          fetch-depth: 0
 
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
@@ -99,9 +115,66 @@ jobs:
           dotnet-version: '10.0.x'
           dotnet-quality: preview
 
+      - name: Pack (rc)
+        run: |
+          dotnet pack src/Cloudflare.FerryQueue/Cloudflare.FerryQueue.csproj \
+            -c Release \
+            -o ./nupkg \
+            /p:MinVerDefaultPreReleaseIdentifiers=rc.0
+
+      - name: NuGet login (OIDC → temp API key)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: jrobertoaraujo
+
       - name: Push to NuGet.org
         run: |
           dotnet nuget push ./nupkg/*.nupkg \
-            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --api-key ${{ steps.login.outputs.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+  # ── Stable release ────────────────────────────────────────────────────────────
+  # Triggered by pushing a semver tag, e.g.: git tag 1.1.0 && git push origin 1.1.0
+  # Version: exact tag value, e.g. 1.1.0 (no suffix). Gated behind the
+  # "nuget-release" GitHub Environment, which should have a required reviewer
+  # configured (Settings → Environments) so publishing needs manual approval.
+  publish-stable:
+    name: Pack & Publish (stable)
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    environment: nuget-release
+    permissions:
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          dotnet-quality: preview
+
+      - name: Pack (stable)
+        run: |
+          dotnet pack src/Cloudflare.FerryQueue/Cloudflare.FerryQueue.csproj \
+            -c Release \
+            -o ./nupkg
+
+      - name: NuGet login (OIDC → temp API key)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: jrobertoaraujo
+
+      - name: Push to NuGet.org
+        run: |
+          dotnet nuget push ./nupkg/*.nupkg \
+            --api-key ${{ steps.login.outputs.NUGET_API_KEY }} \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate

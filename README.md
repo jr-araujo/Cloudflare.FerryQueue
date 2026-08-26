@@ -244,13 +244,27 @@ dotnet build
 # Test
 dotnet test
 
-# Pack
+# Pack (local, ad-hoc — CI/CD computes the real version automatically, see below)
 dotnet pack src/Cloudflare.FerryQueue -c Release -o ./nupkg
+```
 
-# Publish
-dotnet nuget push ./nupkg/*.nupkg \
-  --api-key YOUR_NUGET_TOKEN \
-  --source https://api.nuget.org/v3/index.json
+### Versioning & release pipeline
+
+Package versions are computed automatically by [MinVer](https://github.com/adamralph/minver)
+from git tags/history — there's no manual version bump anywhere in the code. Publishing to
+NuGet.org uses [Trusted Publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing)
+(OIDC), so no API key secrets are stored in this repo at all.
+
+| Event | Version produced | Gate |
+|---|---|---|
+| Push to a pull request | `{next}-alpha.0.{height}` (e.g. `1.0.1-alpha.0.3`) | None — publishes automatically so reviewers can test the exact build under review |
+| Manually run the workflow (`workflow_dispatch`, from `main`) | `{next}-rc.0.{height}` (e.g. `1.0.1-rc.0.7`) | The manual trigger itself — no separate approval step |
+| Push a semver tag (e.g. `git tag 1.1.0 && git push origin 1.1.0`) | Exact tag value (e.g. `1.1.0`), no suffix | Requires manual approval via the `nuget-release` GitHub Environment |
+
+To install a prerelease build for testing:
+
+```bash
+dotnet add package Cloudflare.FerryQueue --version 1.0.1-alpha.0.3 --prerelease
 ```
 
 ---
