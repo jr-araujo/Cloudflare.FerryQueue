@@ -4,9 +4,7 @@
     <Project Path="samples/Cloudflare.FerryQueue.Sample.Producer/Cloudflare.FerryQueue.Sample.Producer.csproj" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/Cloudflare.FerryQueue.Tests/Cloudflare.FerryQueue.Tests.csproj" />
     <Project Path="src/Cloudflare.FerryQueue/Cloudflare.FerryQueue.csproj" />
-  </Folder>
-  <Folder Name="/tests/">
-    <Project Path="tests/Cloudflare.FerryQueue.Tests/Cloudflare.FerryQueue.Tests.csproj" />
   </Folder>
 </Solution>
