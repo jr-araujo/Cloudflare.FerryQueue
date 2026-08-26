@@ -1,4 +1,5 @@
 using Cloudflare.FerryQueue.Configuration;
+using Cloudflare.FerryQueue.Exceptions;
 using Microsoft.Extensions.Logging;
 
 namespace Cloudflare.FerryQueue.Retry;
@@ -49,6 +50,17 @@ internal static class RetryPolicy
 
                 await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
             }
+            catch (CloudflareTransientException ex)
+            {
+                // Retries exhausted — surface as the public exception type instead of
+                // letting the internal marker exception escape to callers.
+                throw new CloudflareQueuesException(
+                    $"[CloudflareQueues] {operationName} failed after {options.MaxRetries} " +
+                    $"retr{(options.MaxRetries == 1 ? "y" : "ies")} due to transient HTTP {ex.StatusCode}: {ex.Message}",
+                    ex.StatusCode,
+                    [],
+                    ex);
+            }
             catch (HttpRequestException ex) when (attempt < options.MaxRetries)
             {
                 attempt++;
@@ -61,6 +73,15 @@ internal static class RetryPolicy
                     operationName, attempt, options.MaxRetries, (int)delay.TotalMilliseconds);
 
                 await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+            }
+            catch (HttpRequestException ex)
+            {
+                // Retries exhausted — surface as the public exception type instead of
+                // letting the network-level exception escape to callers.
+                throw new CloudflareQueuesException(
+                    $"[CloudflareQueues] {operationName} failed after {options.MaxRetries} " +
+                    $"retr{(options.MaxRetries == 1 ? "y" : "ies")} due to a network error: {ex.Message}",
+                    ex);
             }
         }
     }
