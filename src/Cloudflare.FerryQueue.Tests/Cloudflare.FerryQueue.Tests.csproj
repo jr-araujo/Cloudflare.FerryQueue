@@ -24,7 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Cloudflare.FerryQueue\Cloudflare.FerryQueue.csproj" />
+    <ProjectReference Include="..\Cloudflare.FerryQueue\Cloudflare.FerryQueue.csproj" />
   </ItemGroup>
 
 </Project>
