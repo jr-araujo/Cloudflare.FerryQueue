@@ -13,7 +13,13 @@
 
     <!-- NuGet metadata -->
     <PackageId>Cloudflare.FerryQueue</PackageId>
-    <Version>1.0.0</Version>
+    <!--
+      Version is computed automatically by MinVer from git tags/history (see below) —
+      do NOT set <Version> here, it would conflict with MinVer's computed value.
+      - Tagged commit (e.g. tag "1.1.0")          -> 1.1.0
+      - PR build                                  -> {next}-alpha.0.{height}
+      - Manually-triggered RC build (workflow_dispatch on main) -> {next}-rc.0.{height}
+    -->
     <Authors>Your Name</Authors>
     <Company>Your Company</Company>
     <Description>
@@ -41,6 +47,10 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Cloudflare.FerryQueue.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MinVer" Version="5.0.0" PrivateAssets="All" />
   </ItemGroup>
 
   <ItemGroup>
